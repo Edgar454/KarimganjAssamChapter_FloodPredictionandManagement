@@ -1,11 +1,10 @@
 import openmeteo_requests
 import requests_cache
-import plotly.graph_objects as go
 import pandas as pd
 from retry_requests import retry
 
 
-def fetch_meteo_data(start_date="2025-02-22" , end_date = "2025-03-03"  , fetch_target = False):
+def fetch_meteo_data(start_date="2025-02-22" , end_date = "2025-03-03"  , fetch_target = False, coords = (24.80, 92.35)):
 
     try:
         # Setup the Open-Meteo API client with cache and retry on error
@@ -17,8 +16,8 @@ def fetch_meteo_data(start_date="2025-02-22" , end_date = "2025-03-03"  , fetch_
         if fetch_target:
             URL = "https://flood-api.open-meteo.com/v1/flood"
             params = {
-                "latitude": 24.80,
-                "longitude": 92.35,
+                "latitude": coords[0],
+                "longitude": coords[1],
                 "daily": "river_discharge",
                 "start_date": start_date,
                 "end_date": end_date,
@@ -28,12 +27,13 @@ def fetch_meteo_data(start_date="2025-02-22" , end_date = "2025-03-03"  , fetch_
         else :
             URL = "https://archive-api.open-meteo.com/v1/archive"
             params = {
-                "latitude": 24.8692,
-                "longitude": 92.3554,
+                "latitude": coords[0],
+                "longitude": coords[1],
                 "start_date": start_date, #depends on model development team
                 "end_date": end_date,
-                "hourly": ["pressure_msl", "soil_moisture_100_to_255cm","temperature_2m"], #variables based on final dataset
-                "daily": ["precipitation_sum", "wind_speed_10m_max", "wind_direction_10m_dominant", "et0_fao_evapotranspiration"],
+                "hourly": ["pressure_msl","soil_moisture_0_to_7cm","soil_moisture_7_to_28cm",
+                           "soil_moisture_28_to_100cm", "soil_moisture_100_to_255cm","temperature_2m_max","temperature_2m_min","temperature_2m_mean"], #variables based on final dataset
+                "daily": ["precipitation_sum", "wind_speed_10m_max", "wind_direction_10m_dominant", "et0_fao_evapotranspiration","wind_gusts_10m_max"],
                 "wind_speed_unit": "ms"
             }
 
@@ -53,8 +53,13 @@ def get_features_from_response(responses):
         ## Process hourly data. The order of variables needs to be the same as requested.
         hourly = response.Hourly()
         hourly_pressure_msl = hourly.Variables(0).ValuesAsNumpy()
-        hourly_soil_moisture_100_to_255cm = hourly.Variables(1).ValuesAsNumpy()
-        hourly_temperature_2m = hourly.Variables(2).ValuesAsNumpy()
+        hourly_soil_moisture_0_to_7cm = hourly.Variables(1).ValuesAsNumpy()
+        hourly_soil_moisture_7_to_28cm = hourly.Variables(2).ValuesAsNumpy()
+        hourly_soil_moisture_28_to_100cm = hourly.Variables(3).ValuesAsNumpy()
+        hourly_soil_moisture_100_to_255cm = hourly.Variables(4).ValuesAsNumpy()
+        hourly_temperature_2m_max = hourly.Variables(5).ValuesAsNumpy()
+        hourly_temperature_2m_min = hourly.Variables(6).ValuesAsNumpy()
+        hourly_temperature_2m_mean = hourly.Variables(7).ValuesAsNumpy()
 
 
         hourly_data = {"date": pd.date_range(
@@ -64,9 +69,15 @@ def get_features_from_response(responses):
             inclusive = "left"
         )}
 
-        hourly_data["pressure_msl"] = hourly_pressure_msl
-        hourly_data["soil_moisture_100_to_255cm"] = hourly_soil_moisture_100_to_255cm
-        hourly_data["temperature_2m"] = hourly_temperature_2m
+        hourly_data["pressure_msl (hPa)"] = hourly_pressure_msl
+        hourly_data["soil_moisture_0_to_7cm (m³/m³)"] = hourly_soil_moisture_0_to_7cm
+        hourly_data["soil_moisture_7_to_28cm (m³/m³)"] = hourly_soil_moisture_7_to_28cm
+        hourly_data["soil_moisture_28_to_100cm (m³/m³)"] = hourly_soil_moisture_28_to_100cm
+        hourly_data["soil_moisture_100_to_255cm (m³/m³)"] = hourly_soil_moisture_100_to_255cm
+        hourly_data["temperature_2m_max (°C)"] = hourly_temperature_2m_max
+        hourly_data["temperature_2m_min (°C)"] = hourly_temperature_2m_min
+        hourly_data["temperature_2m_mean (°C)"] = hourly_temperature_2m_mean
+
 
 
         hourly_dataframe = pd.DataFrame(data = hourly_data)
@@ -77,6 +88,7 @@ def get_features_from_response(responses):
         daily_wind_speed_10m_max = daily.Variables(1).ValuesAsNumpy()
         daily_wind_direction_10m_dominant = daily.Variables(2).ValuesAsNumpy()
         daily_et0_fao_evapotranspiration = daily.Variables(3).ValuesAsNumpy()
+        daily_wind_gusts_10m_max = daily.Variables(4).ValuesAsNumpy()
 
         daily_data = {"date": pd.date_range(
         start = pd.to_datetime(daily.Time(), unit = "s", utc = True),
@@ -84,10 +96,11 @@ def get_features_from_response(responses):
         freq = pd.Timedelta(seconds = daily.Interval()),
         inclusive = "left")}
 
-        daily_data["precipitation_sum"] = daily_precipitation_sum
-        daily_data["wind_speed_10m_max"] = daily_wind_speed_10m_max
+        daily_data["rain_sum (mm)"] = daily_precipitation_sum
+        daily_data["wind_speed_10m_max (m/s)"] = daily_wind_speed_10m_max
         daily_data["wind_direction_10m_dominant"] = daily_wind_direction_10m_dominant
-        daily_data["et0_fao_evapotranspiration"] = daily_et0_fao_evapotranspiration
+        daily_data["et0_fao_evapotranspiration (mm)"] = daily_et0_fao_evapotranspiration
+        daily_data["wind_gusts_10m_max (m/s)"] = daily_wind_gusts_10m_max
 
         daily_dataframe = pd.DataFrame(data = daily_data)
 
@@ -101,8 +114,11 @@ def get_features_from_response(responses):
         daily_avg = hourly_dataframe.groupby("date").mean(numeric_only=True).reset_index()
 
         # Format output, rounds pressure_msl to one decimal place and soil moisture to 3 decimal places
-        daily_avg["pressure_msl"] = daily_avg["pressure_msl"].round(1)
-        daily_avg["soil_moisture_100_to_255cm"] = daily_avg["soil_moisture_100_to_255cm"].round(3)
+        daily_avg["pressure_msl (hPa)"] = daily_avg["pressure_msl"].round(1)
+        daily_avg["soil_moisture_0_to_7cm (m³/m³)"] = daily_avg["soil_moisture_0_to_7cm (m³/m³)"].round(3)
+        daily_avg["soil_moisture_7_to_28cm (m³/m³)"] = daily_avg["soil_moisture_7_to_28cm (m³/m³)"].round(3)
+        daily_avg["soil_moisture_28_to_100cm (m³/m³)"] = daily_avg["soil_moisture_28_to_100cm (m³/m³)"].round(3)
+        daily_avg["soil_moisture_100_to_255cm (m³/m³)"] = daily_avg["soil_moisture_100_to_255cm (m³/m³)"].round(3)
 
         ## Get the date for the daily dataset
         # Convert 'date' column to datetime format and extract only the date part
@@ -117,7 +133,7 @@ def get_features_from_response(responses):
         print("Error processing the features: ", e)
         return None
 
-def get_target_from_response(responses):
+def get_target_from_response(responses , name = "Longai_discharge (m³/s)"):
 
     try:
         response = responses[0]
@@ -131,7 +147,7 @@ def get_target_from_response(responses):
             inclusive = "left"
         )}
 
-        daily_data["river_discharge"] = daily_river_discharge
+        daily_data[name] = daily_river_discharge
 
         daily_dataframe = pd.DataFrame(data = daily_data)
 
@@ -150,7 +166,6 @@ def merge_features_target(features, target):
 
     try:
         merged_df = features.merge(target, on="date")
-        merged_df.set_index("date", inplace=True)
         return merged_df
     
     except Exception as e:
@@ -172,17 +187,35 @@ def fetch_and_process_data(start_date="2025-02-22", end_date="2025-03-03"):
             return None
 
         # Fetch the target
-        target_responses = fetch_meteo_data(start_date, end_date, fetch_target = True)
-        if target_responses is None:
+        longai_target_responses = fetch_meteo_data(start_date, end_date, fetch_target = True)
+        if longai_target_responses is None:
+            return None
+        
+        kushiyara_target_responses = fetch_meteo_data(start_date, end_date, fetch_target = True , coords = (24.6266, 91.7782))
+        if kushiyara_target_responses is None:
+            return None
+        
+        singla_target_responses = fetch_meteo_data(start_date, end_date, fetch_target = True , coords=(24.68216,92.4457))
+        if singla_target_responses is None:
             return None
 
         # Process the target
-        target = get_target_from_response(target_responses)
-        if target is None:
+        longai_river_discharge_data = get_target_from_response(longai_target_responses)
+        if longai_river_discharge_data is None:
+            return None
+        
+        kushiyara_river_discharge_data = get_target_from_response(kushiyara_target_responses , name = "Kushi_discharge (m³/s)")
+        if kushiyara_river_discharge_data is None:
+            return None
+        
+        singla_river_discharge_data = get_target_from_response(singla_target_responses , name = "Singla_discharge (m³/s)")
+        if singla_river_discharge_data is None:
             return None
 
         # Merge the features and target
-        merged_df = merge_features_target(features, target)
+        merged_df = merge_features_target(features, longai_river_discharge_data)
+        merged_df = merge_features_target(merged_df, kushiyara_river_discharge_data)
+        merged_df = merge_features_target(merged_df, singla_river_discharge_data)
         if merged_df is None:
             return None
 
@@ -192,54 +225,3 @@ def fetch_and_process_data(start_date="2025-02-22", end_date="2025-03-03"):
         print("Error fetching and processing the data: ", e)
         return None
     
-def plot_and_disply_data_predictions(data ,discharge_col = "river_discharge", flood_col = "flood", proba_col = "proba"):
-    """
-    Plots river discharge levels and marks predicted flood days with red dots.
-    
-    Parameters:
-    - data (pd.DataFrame): DataFrame containing the river discharge data.
-    - date_col (str): Column name for the date.
-    - discharge_col (str): Column name for the river discharge level.
-    - flood_col (str): Column name indicating if a flood is predicted (1 for flood, 0 otherwise).
-    - proba_col (str): Column name for the predicted flood probability.
-    """
-    
-    try :
-    # Create figure
-        fig = go.Figure()
-        
-        # Add river discharge line
-        fig.add_trace(go.Scatter(
-            x=data.index, 
-            y=data[discharge_col], 
-            mode='lines',
-            name='River Discharge Level',
-            line=dict(color='blue')
-        ))
-        
-        # Add flood prediction points
-        flood_data = data[data[flood_col] == 1]
-        fig.add_trace(go.Scatter(
-            x=flood_data.index, 
-            y=flood_data[discharge_col], 
-            mode='markers',
-            name='Predicted Flood',
-            marker=dict(size=12, color='red', symbol='circle'),
-            text=[f"Predicted Flood<br>Probability: {p:.2f}" for p in flood_data[proba_col]],
-            hoverinfo='text'
-        ))
-        
-        # Update layout
-        fig.update_layout(
-            title='River Discharge Levels with Flood Predictions',
-            xaxis_title='Date',
-            yaxis_title='Discharge Level',
-            template='plotly_white'
-        )
-        return fig
-    
-    except Exception as e:
-        print("Error plotting and displaying the data and predictions: ", e)
-        return None
-    
-

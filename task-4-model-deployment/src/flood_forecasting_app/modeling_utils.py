@@ -4,34 +4,101 @@ import numpy as np
 from datetime import timedelta
 import random
 
-# Here I defined class to act mock model, it's kind of baseline(random predicting 0 or 1)
-class MockModel:
-    def predict(self, weather_data):
-        # Return a list like real ML models
-        return [random.choice([0, 1]) for i in range(len(weather_data))] 
+# Helper function to load the models
+def load_model (model_path):
+    return joblib.load(model_path)
+
+# Load the models	
+discharge_model = load_model("models/discharge_model.joblib")
+rain_model = load_model("models/rain_model.joblib")
+flood_model = load_model("models/flood_clf.joblib")
+
+
+# Helper function to preprocess the data
+def preprocess_data(data):
+    try:
+        data["date"] = pd.to_datetime(data["date"])
+        data.dropna(inplace=True)
+
+        # Feature Engineering
+        data['month'] = data['date'].dt.month
+        data['season'] = data['month'] % 12 // 3
+
+        data['rain_last_3_days'] = data['rain_sum (mm)'].rolling(window=3, min_periods=1).sum()
+        data['rain_last_7_days'] = data['rain_sum (mm)'].rolling(window=7, min_periods=1).sum()
+        data['Longai_discharge_last_3_days'] = data['Longai_discharge (m³/s)'].rolling(window=3, min_periods=1).sum()
+        data['Kushi_discharge_last_3_days'] = data['Kushi_discharge (m³/s)'].rolling(window=3, min_periods=1).sum()
+        data['Singla_discharge_last_3_days'] = data['Singla_discharge (m³/s)'].rolling(window=3, min_periods=1).sum()
+        data['Longai_discharge_last_7_days'] = data['Longai_discharge (m³/s)'].rolling(window=7, min_periods=1).sum()
+        data['Kushi_discharge_last_7_days'] = data['Kushi_discharge (m³/s)'].rolling(window=7, min_periods=1).sum()
+        data['Singla_discharge_last_7_days'] = data['Singla_discharge (m³/s)'].rolling(window=7, min_periods=1).sum()
+        data['soil_moisture_trend'] = data['soil_moisture_100_to_255cm (m³/m³)'].rolling(window=5, min_periods=1).mean()
+        data['rain_soil_interaction'] = data['rain_sum (mm)'] * data['soil_moisture_100_to_255cm (m³/m³)']
+        data['rivers_interaction'] = data['Longai_discharge (m³/s)'] * data['Kushi_discharge (m³/s)'] * data['Singla_discharge (m³/s)']
     
-    def predict_proba(self ,weather_data):
-        return [random.random() for i in range(len(weather_data))]
+    except Exception as e:
+        print(f"An error occurred during preprocessing: {e}")
+    return data.copy()
+
          
 
+## Predict Function
 
-def predict_flood(data , model):
-    last_date = data.index[-1]
-    last_obs = data.loc[last_date].to_numpy().reshape(1, -1)
+regression_features = [
+    "rain_sum (mm)", "Longai_discharge (m³/s)",
+    "temperature_2m_max (°C)", "temperature_2m_min (°C)",
+    "soil_moisture_0_to_7cm (m³/m³)", "soil_moisture_7_to_28cm (m³/m³)",
+    "soil_moisture_28_to_100cm (m³/m³)", "soil_moisture_100_to_255cm (m³/m³)",
+    "rain_last_7_days", "Longai_discharge_last_7_days",
+    "soil_moisture_trend", "rain_soil_interaction", "rivers_interaction",
+    "month", "season"
+]
 
-    predicted_flood = model.predict(last_obs)
-    predicted_proba = model.predict_proba(last_obs)
-    n = len(predicted_flood)
 
-    # Create a DataFrame for future predictions
-    future_dates = [last_date + timedelta(days=i+1) for i in range(n)]
-    future_df = pd.DataFrame({
-        'date': future_dates,
-        'flood': predicted_flood,
-        'proba': predicted_proba,
-        'river_discharge': np.random.randint(40, 50, n),
-    }).set_index('date')
+flood_features = [
+    'temperature_2m_max (°C)', 'temperature_2m_min (°C)', 'temperature_2m_mean (°C)', 'rain_sum (mm)',
+    'precipitation_hours (h)', 'wind_speed_10m_max (m/s)', 'wind_gusts_10m_max (m/s)',
+    'wind_direction_10m_dominant (°)', 'et0_fao_evapotranspiration (mm)', 'unknown_discharge (m³/s)',
+    'Kushi_discharge (m³/s)', 'Longai_discharge (m³/s)', 'Singla_discharge (m³/s)',
+    'pressure_msl (hPa)', 'soil_moisture_0_to_7cm (m³/m³)', 'soil_moisture_7_to_28cm (m³/m³)',
+    'soil_moisture_28_to_100cm (m³/m³)', 'soil_moisture_100_to_255cm (m³/m³)', 'month', 'season',
+    'rain_last_3_days', 'rain_last_7_days', 'Longai_discharge_last_3_days', 'Kushi_discharge_last_3_days',
+    'Singla_discharge_last_3_days', 'Longai_discharge_last_7_days', 'Kushi_discharge_last_7_days',
+    'Singla_discharge_last_7_days', 'soil_moisture_trend', 'rain_soil_interaction', 'rivers_interaction',
+    'predicted_rain', 'predicted_discharge'
+]
 
-    data[['flood', 'proba']] = None  
-    data = pd.concat([data, future_df])
-    return data
+
+def predict_flood(data):
+
+    try:
+        data = preprocess_data(data)
+
+        # Predict the rain and discharge
+        last_date = data.index[-1]
+        last_obs_regr = data.loc[last_date, regression_features].to_numpy().reshape(1, -1)
+        predicted_rain = rain_model.predict(last_obs_regr)[0]
+        predicted_discharge = discharge_model.predict(last_obs_regr)[0]
+
+        # Ensure columns exist and update values
+        for col, value in [('predicted_rain', predicted_rain), ('predicted_discharge', predicted_discharge)]:
+            if col not in data.columns:
+                data[col] = np.nan  # Initialize column with NaN
+            data.at[last_date, col] = value
+
+        # Predict the flood
+        last_obs_flood = data.loc[last_date, flood_features].to_numpy().reshape(1, -1)
+        predicted_flood = flood_model.predict(last_obs_flood)[0]
+        predicted_flood_proba = flood_model.predict_proba(last_obs_flood)[:, 1][0]  # Extract probability for class 1
+
+        # Ensure flood-related columns exist and update values
+        for col, value in [('flood', predicted_flood), ('proba', predicted_flood_proba)]:
+            if col not in data.columns:
+                data[col] = np.nan
+            data.at[last_date, col] = value
+
+        return data.copy()
+    
+    except Exception as e:
+        print(f"An error occurred during prediction: {e}")
+        return data.copy()

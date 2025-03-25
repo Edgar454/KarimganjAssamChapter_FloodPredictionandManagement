@@ -1,6 +1,7 @@
 import streamlit as st
 from modeling_utils import MockModel , predict_flood
-from utils import fetch_and_process_data , plot_and_disply_data_predictions
+from data_collection_utils import fetch_and_process_data 
+from ui_utils import plot_and_disply_data_predictions , get_feature_evolution
 import datetime
 from datetime import timedelta
 import numpy as np
@@ -8,15 +9,6 @@ import numpy as np
 
 st.title("Flood Forecasting App 🌊")
 
-if "mean_precipitation" not in st.session_state:
-    st.session_state.mean_precipitation = 0
-    st.session_state.mean_temperature = 0
-    st.session_state.mean_river_discharge = 0
-    st.session_state.mean_wind = 0
-
-@st.cache_resource
-def get_model():
-    return MockModel()
 
 @st.fragment(run_every="1d")
 def get_input(start_date = "2025-02-22", end_date = str(datetime.date.today())):
@@ -44,33 +36,21 @@ end_date = end_date if end_date <= today else today
 
 data = get_input(start_date, end_date)
 
-
-
 # Printing descriptive statistics about the river
 col1, col2, col3 , col4 = st.columns(4)
-mean_precipitation = data["precipitation_sum"].mean()
-mean_temperature = data["temperature_2m"].mean()
-mean_river_discharge = data["river_discharge"].mean()
-mean_wind= data["wind_speed_10m_max"].mean()
+today_features , features_evolution = get_feature_evolution(data)
+today_precipitation , today_temperature , today_river_discharge , today_wind = today_features
+precipitation_diff , temperature_diff , river_discharge_diff , wind_diff = features_evolution
 
-mean_precipitation_diff = (mean_precipitation - st.session_state.mean_precipitation) / st.session_state.mean_precipitation * 100 if st.session_state.mean_precipitation != 0 else 0
-mean_temperature_diff = (mean_temperature - st.session_state.mean_temperature) / st.session_state.mean_temperature * 100 if st.session_state.mean_temperature != 0 else 0
-mean_river_discharge_diff = (mean_river_discharge - st.session_state.mean_river_discharge) / st.session_state.mean_river_discharge * 100 if st.session_state.mean_river_discharge != 0 else 0
-mean_wind_diff = (mean_wind - st.session_state.mean_wind) / st.session_state.mean_wind * 100 if st.session_state.mean_wind != 0 else 0
 
-col1.metric("River Discharge", f"{mean_river_discharge:.2f} m³/s", "{:.2f}%".format(mean_river_discharge_diff))
-col2.metric("Precipitation", f"{mean_precipitation:.2f} mm", "{:.2f}%" .format(mean_precipitation_diff))
-col3.metric("Temperature", f"{mean_temperature:.2f} °F", "{:.2f}%".format(mean_temperature_diff))
-col4.metric("Wind", f"{mean_wind:.2f} mph", "{:.2f}%".format(mean_wind_diff))
+col1.metric("River Discharge", f"{today_river_discharge:.2f} m³/s", "{:.2f}%".format(river_discharge_diff))
+col2.metric("Precipitation", f"{today_precipitation:.2f} mm", "{:.2f}%" .format(precipitation_diff))
+col3.metric("Temperature", f"{today_temperature:.2f} °F", "{:.2f}%".format(temperature_diff))
+col4.metric("Wind", f"{today_wind:.2f} mph", "{:.2f}%".format(wind_diff))
 
-st.session_state.mean_precipitation = mean_precipitation
-st.session_state.mean_temperature = mean_temperature
-st.session_state.mean_river_discharge = mean_river_discharge
-st.session_state.mean_wind = mean_wind
 
 # Getting the model and making the prediction   
-model = get_model()
-data = predict_flood(data, model)
+data = predict_flood(data)
 
 # Displaying the prediction and the river discharge
 plot_predictions(data)
