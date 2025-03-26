@@ -32,9 +32,13 @@ def fetch_meteo_data(start_date="2025-02-22" , end_date = "2025-03-03"  , fetch_
                 "start_date": start_date, #depends on model development team
                 "end_date": end_date,
                 "hourly": ["pressure_msl","soil_moisture_0_to_7cm","soil_moisture_7_to_28cm",
-                           "soil_moisture_28_to_100cm", "soil_moisture_100_to_255cm","temperature_2m_max","temperature_2m_min","temperature_2m_mean"], #variables based on final dataset
-                "daily": ["precipitation_sum", "wind_speed_10m_max", "wind_direction_10m_dominant", "et0_fao_evapotranspiration","wind_gusts_10m_max"],
-                "wind_speed_unit": "ms"
+                           "soil_moisture_28_to_100cm", "soil_moisture_100_to_255cm" ], #variables based on final dataset
+                "daily": ["precipitation_sum", "wind_speed_10m_max",
+                           "wind_direction_10m_dominant", "et0_fao_evapotranspiration",
+                           "wind_gusts_10m_max","temperature_2m_max","temperature_2m_min" ,
+                           "temperature_2m_mean","rain_sum"],
+                "wind_speed_unit": "ms",
+                "temperature_unit": "celsius"
             }
 
         responses = openmeteo.weather_api(URL, params=params)
@@ -57,9 +61,6 @@ def get_features_from_response(responses):
         hourly_soil_moisture_7_to_28cm = hourly.Variables(2).ValuesAsNumpy()
         hourly_soil_moisture_28_to_100cm = hourly.Variables(3).ValuesAsNumpy()
         hourly_soil_moisture_100_to_255cm = hourly.Variables(4).ValuesAsNumpy()
-        hourly_temperature_2m_max = hourly.Variables(5).ValuesAsNumpy()
-        hourly_temperature_2m_min = hourly.Variables(6).ValuesAsNumpy()
-        hourly_temperature_2m_mean = hourly.Variables(7).ValuesAsNumpy()
 
 
         hourly_data = {"date": pd.date_range(
@@ -74,11 +75,6 @@ def get_features_from_response(responses):
         hourly_data["soil_moisture_7_to_28cm (m³/m³)"] = hourly_soil_moisture_7_to_28cm
         hourly_data["soil_moisture_28_to_100cm (m³/m³)"] = hourly_soil_moisture_28_to_100cm
         hourly_data["soil_moisture_100_to_255cm (m³/m³)"] = hourly_soil_moisture_100_to_255cm
-        hourly_data["temperature_2m_max (°C)"] = hourly_temperature_2m_max
-        hourly_data["temperature_2m_min (°C)"] = hourly_temperature_2m_min
-        hourly_data["temperature_2m_mean (°C)"] = hourly_temperature_2m_mean
-
-
 
         hourly_dataframe = pd.DataFrame(data = hourly_data)
 
@@ -89,6 +85,10 @@ def get_features_from_response(responses):
         daily_wind_direction_10m_dominant = daily.Variables(2).ValuesAsNumpy()
         daily_et0_fao_evapotranspiration = daily.Variables(3).ValuesAsNumpy()
         daily_wind_gusts_10m_max = daily.Variables(4).ValuesAsNumpy()
+        daily_temperature_2m_max = daily.Variables(5).ValuesAsNumpy()
+        daily_temperature_2m_min = daily.Variables(6).ValuesAsNumpy()
+        daily_temperature_2m_mean = daily.Variables(7).ValuesAsNumpy()
+        daily_rain_sum = daily.Variables(8).ValuesAsNumpy()
 
         daily_data = {"date": pd.date_range(
         start = pd.to_datetime(daily.Time(), unit = "s", utc = True),
@@ -96,11 +96,15 @@ def get_features_from_response(responses):
         freq = pd.Timedelta(seconds = daily.Interval()),
         inclusive = "left")}
 
-        daily_data["rain_sum (mm)"] = daily_precipitation_sum
+        daily_data["precipitation_sum (mm)"] = daily_precipitation_sum
         daily_data["wind_speed_10m_max (m/s)"] = daily_wind_speed_10m_max
         daily_data["wind_direction_10m_dominant"] = daily_wind_direction_10m_dominant
         daily_data["et0_fao_evapotranspiration (mm)"] = daily_et0_fao_evapotranspiration
         daily_data["wind_gusts_10m_max (m/s)"] = daily_wind_gusts_10m_max
+        daily_data["temperature_2m_max (°C)"] = daily_temperature_2m_max
+        daily_data["temperature_2m_min (°C)"] = daily_temperature_2m_min
+        daily_data["temperature_2m_mean (°C)"] = daily_temperature_2m_mean
+        daily_data["rain_sum (mm)"] = daily_rain_sum
 
         daily_dataframe = pd.DataFrame(data = daily_data)
 
@@ -114,7 +118,7 @@ def get_features_from_response(responses):
         daily_avg = hourly_dataframe.groupby("date").mean(numeric_only=True).reset_index()
 
         # Format output, rounds pressure_msl to one decimal place and soil moisture to 3 decimal places
-        daily_avg["pressure_msl (hPa)"] = daily_avg["pressure_msl"].round(1)
+        daily_avg["pressure_msl (hPa)"] = daily_avg["pressure_msl (hPa)"].round(1)
         daily_avg["soil_moisture_0_to_7cm (m³/m³)"] = daily_avg["soil_moisture_0_to_7cm (m³/m³)"].round(3)
         daily_avg["soil_moisture_7_to_28cm (m³/m³)"] = daily_avg["soil_moisture_7_to_28cm (m³/m³)"].round(3)
         daily_avg["soil_moisture_28_to_100cm (m³/m³)"] = daily_avg["soil_moisture_28_to_100cm (m³/m³)"].round(3)
@@ -198,6 +202,10 @@ def fetch_and_process_data(start_date="2025-02-22", end_date="2025-03-03"):
         singla_target_responses = fetch_meteo_data(start_date, end_date, fetch_target = True , coords=(24.68216,92.4457))
         if singla_target_responses is None:
             return None
+        
+        unknown_target_responses = fetch_meteo_data(start_date, end_date, fetch_target = True , coords=(24.85,92.32))
+        if unknown_target_responses is None:
+            return None
 
         # Process the target
         longai_river_discharge_data = get_target_from_response(longai_target_responses)
@@ -211,14 +219,20 @@ def fetch_and_process_data(start_date="2025-02-22", end_date="2025-03-03"):
         singla_river_discharge_data = get_target_from_response(singla_target_responses , name = "Singla_discharge (m³/s)")
         if singla_river_discharge_data is None:
             return None
+        
+        unknown_river_discharge_data = get_target_from_response(unknown_target_responses , name = "unknown_discharge (m³/s)")
+        if unknown_river_discharge_data is None:
+            return None
 
         # Merge the features and target
         merged_df = merge_features_target(features, longai_river_discharge_data)
         merged_df = merge_features_target(merged_df, kushiyara_river_discharge_data)
         merged_df = merge_features_target(merged_df, singla_river_discharge_data)
+        merged_df = merge_features_target(merged_df, unknown_river_discharge_data)
         if merged_df is None:
             return None
-
+        
+        merged_df.interpolate(method="linear", inplace=True)
         return merged_df
     
     except Exception as e:

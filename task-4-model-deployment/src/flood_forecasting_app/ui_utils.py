@@ -3,26 +3,30 @@ import pandas as pd
 
 
 def get_feature_evolution(data):
-    yesterday_date = data.index[-2]
-    today_date = data.index[-1]
+    try:
+        yesterday_date = data.index[-2]
+        today_date = data.index[-1]
 
-    yesterday_precipitation = data.loc[yesterday_date , "rain_sum (mm)"]
-    yesterday_temperature = data.loc[yesterday_date , "temperature_2m_max"]
-    yesterday_river_discharge = data.loc[yesterday_date , "Longai_discharge (m³/s)"]
-    yesterday_wind = data.loc[yesterday_date , "wind_speed_10m_max (m/s)"]
+        yesterday_precipitation = data.loc[yesterday_date , "precipitation_sum (mm)"]
+        yesterday_temperature = data.loc[yesterday_date , "temperature_2m_mean (°C)"]
+        yesterday_river_discharge = data.loc[yesterday_date , "Longai_discharge (m³/s)"]
+        yesterday_wind = data.loc[yesterday_date , "wind_speed_10m_max (m/s)"]
 
-    today_precipitation = data.loc[today_date , "rain_sum (mm)"]
-    today_temperature = data.loc[today_date , "temperature_2m_max"]
-    today_river_discharge = data.loc[today_date , "Longai_discharge (m³/s)"]
-    today_wind = data.loc[today_date , "wind_speed_10m_max (m/s)"]
+        today_precipitation = data.loc[today_date , "precipitation_sum (mm)"]
+        today_temperature = data.loc[today_date , "temperature_2m_mean (°C)"]
+        today_river_discharge = data.loc[today_date , "Longai_discharge (m³/s)"]
+        today_wind = data.loc[today_date , "wind_speed_10m_max (m/s)"]
 
-    precipitation_diff = (today_precipitation - yesterday_precipitation) / yesterday_precipitation * 100 if yesterday_precipitation != 0 else 0
-    temperature_diff = (today_temperature - yesterday_temperature) / yesterday_temperature * 100 if yesterday_temperature != 0 else 0
-    river_discharge_diff = (today_river_discharge - yesterday_river_discharge) / yesterday_river_discharge * 100 if yesterday_river_discharge != 0 else 0
-    wind_diff = (today_wind - yesterday_wind) / yesterday_wind * 100 if yesterday_wind != 0 else 0
+        precipitation_diff = (today_precipitation - yesterday_precipitation) / yesterday_precipitation * 100 if yesterday_precipitation != 0 else 0
+        temperature_diff = (today_temperature - yesterday_temperature) / yesterday_temperature * 100 if yesterday_temperature != 0 else 0
+        river_discharge_diff = (today_river_discharge - yesterday_river_discharge) / yesterday_river_discharge * 100 if yesterday_river_discharge != 0 else 0
+        wind_diff = (today_wind - yesterday_wind) / yesterday_wind * 100 if yesterday_wind != 0 else 0
 
-    return (today_precipitation,today_temperature,today_river_discharge,today_wind), (precipitation_diff, temperature_diff, river_discharge_diff, wind_diff)
-
+        return (today_precipitation,today_temperature,today_river_discharge,today_wind), (precipitation_diff, temperature_diff, river_discharge_diff, wind_diff)
+    
+    except Exception as e:
+        print(f"An error occurred during feature evolution computing: {e}")
+        return None, None
 
 
 def plot_and_display_data_predictions(

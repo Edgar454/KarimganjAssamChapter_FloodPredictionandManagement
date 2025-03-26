@@ -5,4 +5,4 @@ requests-cache
 retry-requests
 openmeteo-requests
 plotly
-xgboost
+xgboost 2.1.4

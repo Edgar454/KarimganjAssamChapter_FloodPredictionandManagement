@@ -11,14 +11,13 @@ def load_model (model_path):
 # Load the models	
 discharge_model = load_model("models/discharge_model.joblib")
 rain_model = load_model("models/rain_model.joblib")
-flood_model = load_model("models/flood_clf.joblib")
+flood_model = load_model("models/flood_clf_rfe.joblib")
 
 
 # Helper function to preprocess the data
 def preprocess_data(data):
     try:
         data["date"] = pd.to_datetime(data["date"])
-        data.dropna(inplace=True)
 
         # Feature Engineering
         data['month'] = data['date'].dt.month
@@ -38,12 +37,13 @@ def preprocess_data(data):
     
     except Exception as e:
         print(f"An error occurred during preprocessing: {e}")
+        
     return data.copy()
+    
 
          
 
 ## Predict Function
-
 regression_features = [
     "rain_sum (mm)", "Longai_discharge (m³/s)",
     "temperature_2m_max (°C)", "temperature_2m_min (°C)",
@@ -54,24 +54,21 @@ regression_features = [
     "month", "season"
 ]
 
-
-flood_features = [
-    'temperature_2m_max (°C)', 'temperature_2m_min (°C)', 'temperature_2m_mean (°C)', 'rain_sum (mm)',
-    'precipitation_hours (h)', 'wind_speed_10m_max (m/s)', 'wind_gusts_10m_max (m/s)',
-    'wind_direction_10m_dominant (°)', 'et0_fao_evapotranspiration (mm)', 'unknown_discharge (m³/s)',
-    'Kushi_discharge (m³/s)', 'Longai_discharge (m³/s)', 'Singla_discharge (m³/s)',
-    'pressure_msl (hPa)', 'soil_moisture_0_to_7cm (m³/m³)', 'soil_moisture_7_to_28cm (m³/m³)',
-    'soil_moisture_28_to_100cm (m³/m³)', 'soil_moisture_100_to_255cm (m³/m³)', 'month', 'season',
-    'rain_last_3_days', 'rain_last_7_days', 'Longai_discharge_last_3_days', 'Kushi_discharge_last_3_days',
-    'Singla_discharge_last_3_days', 'Longai_discharge_last_7_days', 'Kushi_discharge_last_7_days',
-    'Singla_discharge_last_7_days', 'soil_moisture_trend', 'rain_soil_interaction', 'rivers_interaction',
-    'predicted_rain', 'predicted_discharge'
-]
+flood_features = ['temperature_2m_min (°C)', 'temperature_2m_mean (°C)',
+       'unknown_discharge (m³/s)', 'Kushi_discharge (m³/s)',
+       'Longai_discharge (m³/s)', 'Singla_discharge (m³/s)',
+       'pressure_msl (hPa)', 'soil_moisture_0_to_7cm (m³/m³)',
+       'soil_moisture_7_to_28cm (m³/m³)', 'soil_moisture_28_to_100cm (m³/m³)',
+       'soil_moisture_100_to_255cm (m³/m³)', 'month',
+       'Longai_discharge_last_3_days', 'Kushi_discharge_last_3_days',
+       'Singla_discharge_last_3_days', 'Longai_discharge_last_7_days',
+       'Kushi_discharge_last_7_days', 'Singla_discharge_last_7_days',
+       'soil_moisture_trend', 'rivers_interaction']
 
 
 def predict_flood(data):
 
-    try:
+    try:  
         data = preprocess_data(data)
 
         # Predict the rain and discharge
