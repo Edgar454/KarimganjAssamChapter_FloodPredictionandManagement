@@ -11,9 +11,9 @@ def load_model (model_path):
     return joblib.load(model_path)
 
 # Load the models	
-discharge_model = load_model("models/discharge_model.joblib")
-rain_model = load_model("models/rain_model.joblib")
-flood_model = load_model("models/flood_clf_rfe.joblib")
+discharge_model = load_model("./models/discharge_model.joblib")
+rain_model = load_model("./models/rain_model.joblib")
+flood_model = load_model("./models/flood_clf_rfe.joblib")
 
 
 # Helper function to preprocess the data
