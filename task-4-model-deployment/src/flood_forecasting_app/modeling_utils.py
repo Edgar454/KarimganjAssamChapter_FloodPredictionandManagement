@@ -1,8 +1,10 @@
 import joblib
 import pandas as pd
 import numpy as np
-from datetime import timedelta
-import random
+import path
+
+dir = path.Path(__file__).abspath()
+sys.append.path(dir.parent.parent)
 
 # Helper function to load the models
 def load_model (model_path):

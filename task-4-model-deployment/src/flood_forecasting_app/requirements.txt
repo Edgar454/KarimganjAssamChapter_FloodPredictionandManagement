@@ -5,4 +5,5 @@ requests-cache
 retry-requests
 openmeteo-requests
 plotly
+path
 xgboost 
